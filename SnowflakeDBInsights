@@ -1,0 +1,84 @@
+#### LIST ALL DATABASES
+select * from SNOWFLAKE.ACCOUNT_USAGE.DATABASES order by database_name;
+select * from SNOWFLAKE.ACCOUNT_USAGE.DATABASES where DATABASE_NAME like 'XXX_%';
+
+
+#### LIST ALL DATABASES WITH SCHEMAS 
+select sch.catalog_name, sch.schema_name, sch.deleted from snowflake.account_usage.schemata sch order by 1,2,3;
+
+
+#### LIST ALL WAREHOUSE 
+select distinct warehouse_name, warehouse_id from SNOWFLAKE.ORGANIZATION_USAGE.WAREHOUSE_METERING_HISTORY;
+select DISTINCT CONSUMER_NAME, warehouse_env from NONPROD_SANDBOX.PLATFORM_METADATA.WAREHOUSE_DETAILS group by 1,2;
+
+#### ROLES
+show roles;
+show grants to role "USER1_DEFAULT";
+select * from snowflake.account_usage.grants_to_roles where name ilike '_DB_SCHEMA_READ_ARL';
+
+###################################################################################################################
+#### GENERAL ACCESS GRANTS TO ROLE, APP ID
+
+#### CREATE ROLE
+CREATE OR REPLACE ROLE USER1_default;
+
+###CREATE USER 
+CREATE OR REPLACE USER "USER1@XYZ.COM" 
+--password = 'SomePassWord' -- If using an rsa key, don't need password.
+display_name = 'Display name for user'
+email = 'USER1@XYZ.COM'
+--default_warehouse = WAREHOUSE_NAME_ETL_WH
+default_role = USER1_default
+must_change_password = False
+-- if using key, uncomment next line
+rsa_public_key =
+'M****HHHUUUJJ****KKKK' ;
+
+
+--#### CREATE WAREHOUSE
+CREATE ROLE IF NOT EXISTS _WAREHOUSE_WAREHOUSENAME_ARL;     -- CREATING WAREHOUSE ROLE
+
+CREATE WAREHOUSE IF NOT EXISTS WAREHOUSENAME_WH          -- CREATING WAREHOUSE
+WITH WAREHOUSE_SIZE = 'XSMALL'
+WAREHOUSE_TYPE = 'STANDARD'
+AUTO_SUSPEND = 300
+AUTO_RESUME = TRUE
+MIN_CLUSTER_COUNT = 1
+MAX_CLUSTER_COUNT = 3
+SCALING_POLICY = 'STANDARD';
+
+GRANT USAGE ON WAREHOUSE WAREHOUSENAME_WH TO ROLE _WAREHOUSE_WAREHOUSENAME_ARL;  -- GRANTING USAGE TO WAREHOUSE ROLE
+
+--#### GRANT ROLE TO USER 
+GRANT ROLE PPB78YS4_default TO USER "USER@UNUM.COM";
+
+--#### GRANT ACCESS TO WAREHOUSE FOR COMPUTE
+GRANT ROLE "_WAREHOUSE_PRODGTMBIAETL_ARL" TO ROLE "USER_DEFAULT";
+grant usage on warehouse "WAREHOUSENAME_WH" to role "USER_DEFAULT";
+grant role _WAREHOUSE_WAREHOUSENAME_ARL to role "USER_DEFAULT";
+
+--#### ACCESS TO DATABASE, _UPDATE will include sel/ins/upd/del
+
+
+GRANT DATABASE ROLE DATABASE._DATABASE_UPDATE_ARL TO ROLE "USER_DEFAULT";
+
+
+
+
+--#### Verify correct access has been given.
+SHOW grants TO ROLE USER_default;
+
+
+show grants to role "CONNECTOR_ROLE";
+-------------------------------------------------------------------------------------------------
+
+
+select sch.catalog_name, sch.schema_name, sch.deleted from snowflake.account_usage.schemata sch order by 1,2,3; 
+
+show grants to role "GLOBAL-GROUP"; 
+
+show grants to role "USER_DEFAULT"; 
+
+
+
+
