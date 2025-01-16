@@ -1,0 +1,132 @@
+#These queries will monitor the cost/ usage for snowflake resources inclusing Storage, Warhouse, Pipe, Users access, etc.
+#---------------------------------------------------------------------------------------------------------------------------
+-- Prod Storage (Run in prod account)
+select year(table_created), month(table_created),
+table_catalog, table_schema, count(distinct table_name),
+((sum(ACTIVE_BYTES) / power(1024, 4)) +
+(sum(TIME_TRAVEL_BYTES) / power(1024, 4)) +
+(sum(FAILSAFE_BYTES) / power(1024, 4)) +
+(sum(RETAINED_FOR_CLONE_BYTES) / power(1024, 4))) * 23
+AS TOTAL_BILLABLE_STORAGE_DOLLARS
+from SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS
+group by year(table_created), month(table_created), table_catalog, table_schema
+order by year(table_created) desc, month(table_created) desc, table_catalog, table_schema;
+
+#-----------------------------------------------------------------------------------------------------------
+-- Prod and non-prod warehouse usage adjusted for cloud services (run in non-prod account)
+select year(wmh.start_time)
+, month(wmh.start_time)
+, wmh.account_name
+, wmh.warehouse_name
+, sum(wmh.credits_used)
+, sum(wmh.credits_used_compute)
+, sum(wmh.credits_used_cloud_services)
+-- Account for division by zero by filtering out when no credits were used.
+-- If cloud services are over the 10% of warehouse compute covered by snowflake, then the adjusted amount billed is the total credits used minus 10% (getting this by getting 90% of the total).
+-- If under the 10% threshold, then the credits_used_compute amount is the correct billed amount.
+, iff(sum(wmh.credits_used_cloud_services) > (sum(wmh.credits_used_compute) * 0.1) and sum(credits_used_compute) > 0,
+sum(credits_used)* 0.9,
+sum(wmh.credits_used_compute)) as adjusted_credits
+-- Column to indicate whether more than 10% of warehouse cost was for Snowflake handled cloud services
+, iff(sum(wmh.credits_used_cloud_services) > (sum(wmh.credits_used_compute) * 0.1),
+'Yes',
+'No') as cloud_charge_apply
+, adjusted_credits * rsd.effective_rate as cost_usd
+from "SNOWFLAKE"."ORGANIZATION_USAGE"."WAREHOUSE_METERING_HISTORY" wmh
+join "SNOWFLAKE"."ORGANIZATION_USAGE"."RATE_SHEET_DAILY" rsd
+on rsd.date = date(wmh.start_time)
+where rsd.usage_type = 'compute'
+  and wmh.account_locator = rsd.account_locator
+  -- Don't need to show the Snowflake warehouse used for cloud services
+  and wmh.warehouse_name <> 'CLOUD_SERVICES_ONLY'
+group by year(wmh.start_time), month(wmh.start_time), wmh.account_name, wmh.warehouse_name, rsd.effective_rate
+order by year(wmh.start_time) desc, month(wmh.start_time) desc, wmh.account_name, wmh.warehouse_name
+;
+#-----------------------------------------------------------------------------------------------------------
+-- Prod and non-prod warehouse usage (run in non-prod account)
+--select year(wmh.start_time)
+--, month(wmh.start_time)
+--, wmh.account_name
+--, wmh.warehouse_name
+--, sum(wmh.credits_used_COMPUTE)
+--, sum(wmh.credits_used_COMPUTE * rsd.effective_rate) as cost_usd
+--from "SNOWFLAKE"."ORGANIZATION_USAGE"."WAREHOUSE_METERING_HISTORY" wmh
+--join "SNOWFLAKE"."ORGANIZATION_USAGE"."RATE_SHEET_DAILY" rsd
+--on rsd.date = date(wmh.start_time)
+--where rsd.usage_type = 'compute'
+--  and wmh.account_locator = rsd.account_locator
+--group by year(wmh.start_time), month(wmh.start_time), wmh.account_name, wmh.warehouse_name
+--order by year(wmh.start_time) desc, month(wmh.start_time) desc, wmh.account_name, wmh.warehouse_name;
+#-----------------------------------------------------------------------------------------------------------
+-- Non-prod snowpipe (Run in non-prod account)
+select
+year(puh.usage_date), month(usage_date)
+, sum(puh.credits_used)
+, p.pipe_schema
+, sum(round(puh.credits_used * rsd.effective_rate, 2))
+from snowflake.account_usage.pipes p
+join snowflake.organization_usage.pipe_usage_history puh
+on p.pipe_id = puh.pipe_id
+join snowflake.organization_usage.rate_sheet_daily rsd
+on puh.usage_date = rsd.date
+where rsd.account_name = 'EDI_LAKEHOUSE_NON_PROD'
+  and rsd.usage_type = 'snowpipe'
+group by 1, 2, 4
+order by 1 desc, 2 desc, 4
+;
+#-----------------------------------------------------------------------------------------------------------
+-- Prod snowpipes (Run in prod account)
+select
+year(puh.start_time), month(start_time)
+, sum(puh.credits_used)
+, p.pipe_schema
+, sum(puh.credits_used * 3.68)
+from snowflake.account_usage.pipes p
+join snowflake.account_usage.pipe_usage_history puh
+on p.pipe_id = puh.pipe_id
+group by 1, 2, 4
+order by 1 desc, 2 desc, 4
+;
+#-----------------------------------------------------------------------------------------------------------
+-- Non-prod snowpipes (Run in non-prod account)
+select
+year(puh.usage_date), month(usage_date)
+, sum(puh.credits_used)
+, p.pipe_schema
+, sum(round(puh.credits_used * rsd.effective_rate, 2))SNOWFLAKE.ACCOUNT_USAGE.PIPES
+from snowflake.account_usage.pipes p
+join snowflake.organization_usage.pipe_usage_history puh
+on p.pipe_id = puh.pipe_id
+join snowflake.organization_usage.rate_sheet_daily rsd
+on puh.usage_date = rsd.date
+where rsd.account_name = 'EDI_LAKEHOUSE_NON_PROD'
+  and rsd.usage_type = 'snowpipe'
+group by 1, 2, 4
+order by 1 desc, 2 desc, 4
+;
+#-----------------------------------------------------------------------------------------------------------
+-- Prod User access (Run in prod account)
+-- Edit to name the fields as opposes to cardinal position
+select year(created_on), month(created_on),
+iff(role like '%\_DEFAULT', 'New App ID', role),
+count(grantee_name)
+from snowflake.account_usage.grants_to_users
+where deleted_on is null
+and granted_to = 'USER'
+group by 1, 2, 3
+order by 1 desc, 2 desc, 3
+;
+#-----------------------------------------------------------------------------------------------------------
+-- Non-Prod User access (Run in non-prod account)
+select year(created_on), month(created_on),
+iff(role like '%\_DEFAULT', 'New App ID', role),
+count(grantee_name)
+from snowflake.account_usage.grants_to_users
+where deleted_on is null
+and granted_to = 'USER'
+group by 1, 2, 3
+order by 1 desc, 2 desc, 3
+;
+#-----------------------------------------------------------------------------------------------------------
+
+
