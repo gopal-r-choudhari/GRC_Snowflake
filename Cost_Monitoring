@@ -69,7 +69,7 @@ join snowflake.organization_usage.pipe_usage_history puh
 on p.pipe_id = puh.pipe_id
 join snowflake.organization_usage.rate_sheet_daily rsd
 on puh.usage_date = rsd.date
-where rsd.account_name = 'EDI_LAKEHOUSE_NON_PROD'
+where rsd.account_name = 'ACCOUNT_NAME'
   and rsd.usage_type = 'snowpipe'
 group by 1, 2, 4
 order by 1 desc, 2 desc, 4
@@ -99,7 +99,7 @@ join snowflake.organization_usage.pipe_usage_history puh
 on p.pipe_id = puh.pipe_id
 join snowflake.organization_usage.rate_sheet_daily rsd
 on puh.usage_date = rsd.date
-where rsd.account_name = 'EDI_LAKEHOUSE_NON_PROD'
+where rsd.account_name = 'ACCOUNT_NAME'
   and rsd.usage_type = 'snowpipe'
 group by 1, 2, 4
 order by 1 desc, 2 desc, 4
